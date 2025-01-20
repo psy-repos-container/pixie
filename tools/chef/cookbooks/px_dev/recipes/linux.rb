@@ -30,7 +30,7 @@ apt_pkg_list = [
   # Not the newest docker CE from official docker repository, but should suffice.
   'docker.io',
   'git',
-  'libncurses5',
+  'libncurses6',
   'lcov',
   'podman',
   'sudo',
@@ -51,6 +51,11 @@ apt_pkg_list = [
   # Libtool/unwind, needed for perftools.
   'libltdl-dev',
   'libunwind-dev',
+
+  'qemu-system-arm',
+  'qemu-system-x86',
+  'qemu-user-static',
+  'qemu-utils',
 ]
 
 apt_package apt_pkg_list do
@@ -61,5 +66,3 @@ execute 'enable docker' do
   command 'systemctl enable docker'
   action :run
 end
-
-include_recipe 'px_dev::linux_gcc_musl'

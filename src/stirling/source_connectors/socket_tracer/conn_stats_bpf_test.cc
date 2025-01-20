@@ -19,7 +19,8 @@
 #include "src/common/testing/testing.h"
 #include "src/stirling/core/output.h"
 #include "src/stirling/source_connectors/socket_tracer/testing/client_server_system.h"
-#include "src/stirling/source_connectors/socket_tracer/testing/container_images.h"
+#include "src/stirling/source_connectors/socket_tracer/testing/container_images/curl_container.h"
+#include "src/stirling/source_connectors/socket_tracer/testing/container_images/nginx_openssl_1_1_1_container.h"
 #include "src/stirling/source_connectors/socket_tracer/testing/socket_trace_bpf_test_fixture.h"
 #include "src/stirling/testing/common.h"
 
@@ -405,7 +406,7 @@ TEST_F(ConnStatsBPFTest, SSLConnections) {
     //               bytes_sent/bytes_rcvd should be 2730 and 1029 respectively
     //               once we perform our accounting on encrypted data.
     // The TLS handshake has 4 less bytes when using 127.0.0.1 instead of localhost.
-    EXPECT_THAT(bytes_sent, 2493);
+    EXPECT_THAT(bytes_sent, 2486);
     EXPECT_THAT(bytes_rcvd, 698);
     EXPECT_THAT(addr_family, static_cast<int>(SockAddrFamily::kIPv4));
     EXPECT_THAT(protocol, kProtocolHTTP);

@@ -31,19 +31,6 @@ namespace px {
 class ContainerRunner {
  public:
   /**
-   * Set-up a container runner with image from a registry.
-   *
-   * @param image Image to run.
-   * @param instance_name_prefix The container instance name prefix. The instance name will
-   * automatically be suffixed with a timestamp.
-   * @param ready_message A pattern in the container logs that indicates that the container is
-   * ready. The Run() function will not return until this pattern is observed. Leave blank to skip
-   * this feature.
-   */
-  ContainerRunner(std::string_view image, std::string_view instance_name_prefix,
-                  std::string_view ready_message);
-
-  /**
    * Set-up a container runner from local tarball image.
    *
    * @param image_tar Image tarball.
@@ -61,8 +48,10 @@ class ContainerRunner {
   /**
    * Run the container created by the constructor.
    *
-   * @param timeout Amount of time after which the container will be killed.
-   * @param options Environment variables to pass to the container (e.g. "--env=FOO=bar")
+   * @param timeout Amount of time to wait for container to come up.
+   * @param options Option args to pass to podman (e.g. "--env=FOO=bar").
+   * @param args Args to pass to the underlying container.
+   * @param container_lifetime Amount of time after which the container will be killed.
    * @return error stdout of the container, or error if container fails to reach the ready state.
    */
   StatusOr<std::string> Run(const std::chrono::seconds& timeout = std::chrono::seconds{60},
@@ -75,7 +64,18 @@ class ContainerRunner {
   /**
    * Wait for container to terminate.
    */
-  void Wait();
+  void Wait(bool close_pipe = true);
+
+  /**
+   * Returns the exit status of the container.
+   */
+  int GetStatus() { return podman_.GetStatus(); }
+
+  /**
+   * Returns the stdout of the container. Needs to be combined with the full output from Run
+   * to ensure the entire result is present.
+   */
+  Status Stdout(std::string* out);
 
   /**
    * The PID of the process within the container.

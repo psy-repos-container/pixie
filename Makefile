@@ -34,6 +34,12 @@ $(call make-lazy,yellow)
 $(call make-lazy,cyan)
 $(call make-lazy,term-reset)
 
+# This default target is invoked by CodeQL. Ensure that this is the first
+# target in this makefile.
+.PHONY: go
+go: ## A simple go build that ensure that the go code compiles.
+	CGO_ENABLED=0 go build ./...
+
 .PHONY: clean
 clean: ## Remove the bazel build directories.
 	$(BAZEL) clean
@@ -64,7 +70,7 @@ test-tsan: ## Run all the tests, with thread sanitizer.
 
 .PHONY: go-mod-tidy
 go-mod-tidy: ## Ensure that go are cleaned up.
-	go mod tidy -compat=1.20
+	go mod tidy -compat=1.21
 
 .PHONY: go-mod-ensure
 go-mod-ensure: ## Ensure that go dependencies exist.

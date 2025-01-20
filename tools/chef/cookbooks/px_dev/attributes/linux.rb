@@ -23,24 +23,19 @@ default['owner'] = 'root'
 default['group'] = 'root'
 
 default['bazel']['download_path'] =
-  "https://github.com/bazelbuild/bazel/releases/download/6.0.0/bazel-6.0.0-linux-x86_64"
+  "https://github.com/bazelbuild/bazel/releases/download/6.2.0/bazel-6.2.0-linux-x86_64"
 default['bazel']['sha256'] =
-  'f03d44ecaac3878e3d19489e37caa4ca1dc57427b686a78a85065ea3c27ebe68'
+  '3d11c26fb9ba12c833844450bb90165b176e8a19cb5cf5923f3cec855837f17c'
 
 default['codecov']['download_path'] =
   'https://uploader.codecov.io/v0.2.3/linux/codecov'
 default['codecov']['sha256'] =
   '648b599397548e4bb92429eec6391374c2cbb0edb835e3b3f03d4281c011f401'
 
-default['fossa']['download_path'] =
-  'https://github.com/fossas/fossa-cli/releases/download/v1.1.10/fossa-cli_1.1.10_linux_amd64.tar.gz'
-default['fossa']['sha256'] =
-  'a263aabf09308614a39d8486df722f3b03ab5b0f5060b655be1fd9def8e5619f'
-
 default['golang']['download_path'] =
-  'https://dl.google.com/go/go1.20.linux-amd64.tar.gz'
+  'https://go.dev/dl/go1.21.0.linux-amd64.tar.gz'
 default['golang']['sha256'] =
-  '5a9ebcc65c1cce56e0d2dc616aff4c4cedcfbda8cc6f0288cc08cda3b18dcbf1'
+  'd0398903a16ba2232b389fb31032ddf57cac34efda306a0eebac34f0965a0742'
 
 default['golangci-lint']['download_path'] =
   'https://github.com/golangci/golangci-lint/releases/download/v1.51.1/golangci-lint-1.51.1-linux-amd64.tar.gz'
@@ -48,9 +43,9 @@ default['golangci-lint']['sha256'] =
   '17aeb26c76820c22efa0e1838b0ab93e90cfedef43fbfc9a2f33f27eb9e5e070'
 
 default['nodejs']['download_path'] =
-  'https://nodejs.org/dist/v16.13.2/node-v16.13.2-linux-x64.tar.xz'
+  'https://nodejs.org/dist/v18.16.0/node-v18.16.0-linux-x64.tar.xz'
 default['nodejs']['sha256'] =
-  '7f5e9a42d6e86147867d35643c7b1680c27ccd45db85666fc52798ead5e74421'
+  '44d93d9b4627fe5ae343012d855491d62c7381b236c347f7666a7ad070f26548'
 
 default['prototool']['download_path'] =
   'https://github.com/uber/prototool/releases/download/v1.10.0/prototool-Linux-x86_64'
@@ -58,6 +53,6 @@ default['prototool']['sha256'] =
   '2247ff34ad31fa7d9433b3310879190d1ab63b2ddbd58257d24c267f53ef64e6'
 
 default['shellcheck']['download_path'] =
-  'https://github.com/koalaman/shellcheck/releases/download/v0.7.0/shellcheck-v0.7.0.linux.x86_64.tar.xz'
+  'https://github.com/koalaman/shellcheck/releases/download/v0.9.0/shellcheck-v0.9.0.linux.x86_64.tar.xz'
 default['shellcheck']['sha256'] =
-  '39c501aaca6aae3f3c7fc125b3c3af779ddbe4e67e4ebdc44c2ae5cba76c847f'
+  '700324c6dd0ebea0117591c6cc9d7350d9c7c5c287acbad7630fa17b1d4d9e2f'

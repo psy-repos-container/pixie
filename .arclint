@@ -19,6 +19,7 @@
     "(^private\/credentials\/.*\\.sh)",
     "(^private\/credentials\/.*\\.yaml)",
     "(^src/operator/client/versioned/)",
+    "(^src/operator/apis/px.dev/v1alpha1/zz_generated.deepcopy.go)",
     "(^src/stirling/bpf_tools/bcc_bpf/system-headers)",
     "(^src/stirling/mysql/testing/.*\\.json$)",
     "(^src/stirling/obj_tools/testdata/go/test_go_binary.go)",
@@ -136,12 +137,10 @@
       "type": "golangci-lint",
       "include": [
         "(\\.go$)"
-      ]
-    },
-    "golint": {
-      "type": "golint",
-      "include": [
-        "(\\.go$)"
+      ],
+      "flags": [
+        "--timeout=5m0s",
+        "--out-format=checkstyle"
       ]
     },
     "jshint-ui": {
@@ -205,7 +204,8 @@
       "type": "spelling",
       "exclude": [
         "(.*\\.crt$)",
-        "(.*\\.key$)"
+        "(.*\\.key$)",
+        "(^k8s\/operator\/helm\/crds\/olm_crd.yaml$)"
       ]
     },
     "text": {

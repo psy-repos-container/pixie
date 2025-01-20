@@ -22,12 +22,15 @@ BUILD_DIR ?= .build
 TOT		       := $$(git rev-parse --show-toplevel)
 DOCKER_PROPERTIES_FILE := $(TOT)/docker.properties
 
-DEV_EXTRAS_TAG = $$(cat $(DOCKER_PROPERTIES_FILE) | cut -d'=' -f2)
+GH_RELEASE_UPLOAD := $(TOT)/scripts/create_release_for_dev_artifact.sh
+
+DEV_EXTRAS_TAG = $$(grep DOCKER_IMAGE_TAG $(DOCKER_PROPERTIES_FILE) | cut -d'=' -f2)
+DEV_EXTRAS_DIGEST = $$(grep DEV_IMAGE_WITH_EXTRAS_DIGEST $(DOCKER_PROPERTIES_FILE) | cut -d'=' -f2)
 DEV_EXTRAS_IMAGE = "gcr.io/pixie-oss/pixie-dev-public/dev_image_with_extras:$(DEV_EXTRAS_TAG)"
 
 ## Clang deb parameters
 CLANG_VERSION := 15.0
-CLANG_SUFFIX := pl11
+CLANG_SUFFIX := pl12
 
 CLANG_TAG="$(CLANG_VERSION)-$(CLANG_SUFFIX)"
 
@@ -35,6 +38,15 @@ clang_deb_fname := "clang-$(CLANG_TAG).deb"
 clang_linters_deb_fname := "clang-linters-$(CLANG_TAG).deb"
 clang_gs_path :=  gs://pixie-dev-public/clang/$(CLANG_TAG)
 clang_deb_image_tag := "gcr.io/pixie-oss/pixie-dev-public/clang_deb_builder_image:$(CLANG_VERSION)"
+CLANG_BUILD_DIR := "$(BUILD_DIR)/clang-$(CLANG_TAG)"
+
+## libtinfo5 parameters
+# This is the latest libtinfo5 deb from bionic upstream. Since Ubuntu 24.04 and later
+# use newer versions, this is needed to make the pixie built clang binary happy by providing
+# its dynamically linked dependencies (libtinfo5).
+LIBTINFO5_DEB_IMAGE_VERSION := 6.3-2ubuntu0.1
+LIBTINFO5_DEB_DOWNLOAD := http://us.archive.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_$(LIBTINFO5_DEB_IMAGE_VERSION)_amd64.deb
+libtinfo5_deb_fname := libtinfo5-$(LIBTINFO5_DEB_IMAGE_VERSION).deb
 
 ## gperftools parameters
 GPERFTOOLS_DEB_IMAGE_VERSION := 2.10-pl1
@@ -49,7 +61,7 @@ GRAALVM_ARCHIVE_FNAME := graalvm-native-image-22.3.0.tar.gz
 GRAALVM_ARCHIVE_GS_PATH := gs://pixie-dev-public/graalvm-native-image-22.3.0-$(GRAALVM_IMAGE_VERSION).tar.gz
 
 ## Sysroot parameters
-SYSROOT_REV := pl6
+SYSROOT_REV := pl8
 SYSROOT_BUILD_DIR := $(BUILD_DIR)/sysroots
 SYSROOT_ARCHITECTURES := amd64 arm64
 SYSROOT_VARIANTS := runtime build test
@@ -99,9 +111,9 @@ LINUX_HEADERS_X86_64_MERGED_FILE := $(LINUX_HEADER_BUILD_DIR)/linux-headers-merg
 LINUX_HEADERS_ARM64_MERGED_FILE := $(LINUX_HEADER_BUILD_DIR)/linux-headers-merged-arm64-$(LINUX_HEADERS_REV).tar.gz
 LINUX_HEADERS_GS_PATH := gs://pixie-dev-public/linux-headers/$(LINUX_HEADERS_REV)
 
-## Curl image parameters.
-CURL_IMAGE_VERSION := 1.0
-curl_image_tag := "gcr.io/pixie-oss/pixie-dev-public/curl:$(CURL_IMAGE_VERSION)"
+## NATS image parameters.
+NATS_IMAGE_VERSION := 2.9.19
+nats_image_tag := "ghcr.io/pixie-io/nats:$(NATS_IMAGE_VERSION)-scratch"
 
 ## Copybara image parameters.
 COPYBARA_IMAGE_VERSION := 20210420
@@ -113,14 +125,21 @@ elasticsearch_image_tag := "gcr.io/pixie-oss/pixie-dev-public/elasticsearch:$(EL
 
 ## Linux kernel for qemu/BPF tests.
 KERNEL_BUILD_DIR := $(BUILD_DIR)/kernel_build
-KERNEL_BUILD_VERSIONS := 4.14.304 \
-	5.15.90 \
-	5.18.19 \
-	6.1.8
+# 4.19.276, 4.14.304 are the correct versions here, but there is a bug with patch > 255.
+KERNEL_BUILD_VERSIONS := 4.14.254 \
+	4.19.254 \
+	5.4.254 \
+	5.10.224 \
+	5.15.165 \
+	6.1.106 \
+	6.8.12
 
 KERNEL_BUILD_TEMPLATE := linux-build-%.tar.gz
 KERNEL_BUILD_TARGETS = $(addprefix $(KERNEL_BUILD_DIR)/, $(patsubst %,$(KERNEL_BUILD_TEMPLATE), $(KERNEL_BUILD_VERSIONS)))
-KERNEL_BUILD_GS_PATH := gs://pixie-dev-public/kernel-build/$$(date +%Y%m%d%H%M%S)
+KERNEL_BUILD_TS := $(shell date +%Y%m%d%H%M%S)
+
+ETCD_IMAGE_VERSION := 3.5.9
+ETCD_IMAGE_TAG := "gcr.io/pixie-oss/pixie-dev-public/etcd:$(ETCD_IMAGE_VERSION)"
 
 ##############################################
 # Clang Build
@@ -131,27 +150,37 @@ build_clang_deb_image:
 
 .PHONY: upload_clang_deb
 upload_clang_deb: build_clang_deb_image ## Target to build and upload clang deb image
+	@mkdir -p $(CLANG_BUILD_DIR)
+	$(DOCKER) run --rm -e CLANG_SUFFIX=$(CLANG_SUFFIX) -e CLANG_VERSION=$(CLANG_VERSION) -v $(PWD)/$(CLANG_BUILD_DIR):/image $(clang_deb_image_tag)
+
+	sha256sum $(CLANG_BUILD_DIR)/* > $(CLANG_BUILD_DIR)/sha256sums
+	gsutil cp $(CLANG_BUILD_DIR)/* $(clang_gs_path)/
+	$(GH_RELEASE_UPLOAD) clang $(CLANG_TAG) $(CLANG_BUILD_DIR)/*
+
+	cat $(CLANG_BUILD_DIR)/sha256sums
+
+##############################################
+# libtinfo5 upload
+##############################################
+.PHONY: upload_libtinfo5_deb
+upload_libtinfo5_deb:
 	mkdir -p $(BUILD_DIR)
-	$(DOCKER) run --rm -e CLANG_SUFFIX=$(CLANG_SUFFIX) -e CLANG_VERSION=$(CLANG_VERSION) -v $(PWD)/$(BUILD_DIR):/image $(clang_deb_image_tag)
-
-	sha256sum $(BUILD_DIR)/* > $(BUILD_DIR)/sha256sums
-	gsutil cp $(BUILD_DIR)/* $(clang_gs_path)/
-
-	cat $(BUILD_DIR)/sha256sums
-
+	wget $(LIBTINFO5_DEB_DOWNLOAD) -O $(PWD)/$(BUILD_DIR)/$(libtinfo5_deb_fname)
+	$(GH_RELEASE_UPLOAD) libtinfo5 $(LIBTINFO5_DEB_IMAGE_VERSION) $(PWD)/$(BUILD_DIR)/$(libtinfo5_deb_fname)
 
 ##############################################
 # GPerftools build
 ##############################################
 .PHONY: build_gperftools_deb_image
 build_gperftools_deb_image:
-	$(DOCKER) build --build-arg BASE_IMAGE=$(DEV_EXTRAS_IMAGE) gperftools_deb_image -t $(gperftools_deb_image_tag)
+	$(DOCKER) build --build-arg BASE_IMAGE=$(DEV_EXTRAS_IMAGE) --build-arg BASE_IMAGE_DIGEST=$(DEV_EXTRAS_DIGEST) gperftools_deb_image -t $(gperftools_deb_image_tag)
 
 .PHONY: upload_gperftools_deb
 upload_gperftools_deb: build_gperftools_deb_image ## Target to build and upload gperftools deb image
 	mkdir -p $(BUILD_DIR)
 	$(DOCKER) run --rm -e DEB_NAME=$(gperftools_deb_fname) -e DEB_VERSION=$(GPERFTOOLS_DEB_IMAGE_VERSION) -v $(PWD)/$(BUILD_DIR):/image $(gperftools_deb_image_tag)
 	gsutil cp $(PWD)/$(BUILD_DIR)/$(gperftools_deb_fname) $(gperftools_deb_gs_path)
+	$(GH_RELEASE_UPLOAD) gperftools $(GPERFTOOLS_DEB_IMAGE_VERSION) $(PWD)/$(BUILD_DIR)/$(gperftools_deb_fname)
 	@echo "SHA: "
 	sha256sum $(PWD)/$(BUILD_DIR)/$(gperftools_deb_fname)
 
@@ -168,6 +197,7 @@ upload_graalvm_archive: build_graalvm_archive_image
 	mkdir -p $(BUILD_DIR)
 	$(DOCKER) run --rm -v $(PWD)/$(BUILD_DIR):/archive $(GRAALVM_ARCHIVE_IMAGE_TAG)
 	gsutil cp $(PWD)/$(BUILD_DIR)/$(GRAALVM_ARCHIVE_FNAME) $(GRAALVM_ARCHIVE_GS_PATH)
+	$(GH_RELEASE_UPLOAD) graalvm $(GRAALVM_IMAGE_VERSION) $(PWD)/$(BUILD_DIR)/$(GRAALVM_ARCHIVE_FNAME)
 	@echo "SHA: "
 	sha256sum $(PWD)/$(BUILD_DIR)/$(GRAALVM_ARCHIVE_FNAME)
 
@@ -205,8 +235,8 @@ $(LINUX_HEADERS_ARM64_MERGED_FILE): $(LINUX_HEADER_ARM64_TARGETS)
 .PHONY: upload_linux_headers
 upload_linux_headers:  $(LINUX_HEADERS_X86_64_MERGED_FILE) $(LINUX_HEADERS_ARM64_MERGED_FILE) ## Target to build and upload linux headers image
 	gsutil cp $^ $(LINUX_HEADERS_GS_PATH)
+	$(GH_RELEASE_UPLOAD) linux-headers $(LINUX_HEADERS_REV) $^
 	sha256sum $^
-
 
 ##############################################
 # Sysroots Build
@@ -220,16 +250,19 @@ build_all_sysroots: sysroot_creator/Dockerfile sysroot_creator/build_all_sysroot
 .PHONY: upload_all_sysroots
 upload_all_sysroots: build_all_sysroots
 	gsutil cp $(SYSROOT_BUILD_DIR)/* $(SYSROOT_GS_PATH)
+	$(GH_RELEASE_UPLOAD) sysroots $(SYSROOT_REV) $(SYSROOT_BUILD_DIR)/*
 	sha256sum $(SYSROOT_BUILD_DIR)/*
 
-
 ##############################################
-# Test docker images.
+# Custom docker images.
 ##############################################
-.PHONY: build_and_upload_curl_image
-build_and_upload_curl_image:
-	$(DOCKER) build curl_image -t $(curl_image_tag)
-	$(DOCKER) push $(curl_image_tag)
+.PHONY: build_and_upload_nats_image
+build_and_upload_nats_image:
+	$(DOCKER) buildx build nats_image \
+		--platform linux/amd64,linux/arm64 \
+		--build-arg=NATS_VERSION="v$(NATS_IMAGE_VERSION)" \
+		-t $(nats_image_tag) \
+		--push
 
 .PHONY: build_and_upload_copybara_image
 build_and_upload_copybara_image:
@@ -253,9 +286,21 @@ $(KERNEL_BUILD_DIR)/linux-build-%.tar.gz: kernel_builder/Dockerfile kernel_build
 
 .PHONY: upload_kernel_build
 upload_kernel_build:  $(KERNEL_BUILD_TARGETS)
-	echo "hello"
-	gsutil cp $^ $(KERNEL_BUILD_GS_PATH)
-	sha256sum $^
+	$(GH_RELEASE_UPLOAD) kernel-build $(KERNEL_BUILD_TS) $^
+	@echo "Add this to the qemu bzl file:"
+	@echo "============================="
+	@echo "kernel_build_date = ${KERNEL_BUILD_TS}"
+	@echo "kernel_catalog = {"
+	@sha256sum $^ | awk 'match($$0, /.*linux\-build\-(.*).tar.gz/, arr) { printf("    \"%s\": \"%s\",\n", arr[1], $$1)}'
+	@echo "}"
+	@echo "============================="
+
+##############################################
+# ETCD Image Builder
+##############################################
+
+upload_etcd_image:
+	$(DOCKER) buildx build --platform linux/amd64,linux/arm64 -t $(ETCD_IMAGE_TAG) --push etcd_image
 
 clean:
 	@rm -rf $(BUILD_DIR)

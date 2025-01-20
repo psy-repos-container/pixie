@@ -19,44 +19,68 @@ load("//bazel/cc_toolchains:utils.bzl", "abi")
 
 SYSROOT_LOCATIONS = dict(
     sysroot_x86_64_glibc2_36_runtime = dict(
-        sha256 = "7dcdec4bd693329a1ed670a87e95814a87f0906bd0f0c14058f47003b9fcf52a",
+        sha256 = "0f6c8147394c41a5c10715d0859ca2ef6e03d65a52b5959f6e11f1de7513f3a4",
         strip_prefix = "",
-        urls = ["https://storage.googleapis.com/pixie-dev-public/sysroots/pl6/sysroot-amd64-runtime.tar.gz"],
+        urls = [
+            "https://github.com/pixie-io/dev-artifacts/releases/download/sysroots%2Fpl8/sysroot-amd64-runtime.tar.gz",
+            "https://storage.googleapis.com/pixie-dev-public/sysroots/pl8/sysroot-amd64-runtime.tar.gz",
+        ],
     ),
     sysroot_x86_64_glibc2_36_build = dict(
-        sha256 = "b3c7cd7044ba3de0f3550bece6e21f69eb198e9a165eeab690257a749fe442d0",
+        sha256 = "ccf1c8426baa180c8b1b178b58acf9c06c7e7b16383cf92f42719a2a05585058",
         strip_prefix = "",
-        urls = ["https://storage.googleapis.com/pixie-dev-public/sysroots/pl6/sysroot-amd64-build.tar.gz"],
+        urls = [
+            "https://github.com/pixie-io/dev-artifacts/releases/download/sysroots%2Fpl8/sysroot-amd64-build.tar.gz",
+            "https://storage.googleapis.com/pixie-dev-public/sysroots/pl8/sysroot-amd64-build.tar.gz",
+        ],
     ),
     sysroot_x86_64_glibc2_36_test = dict(
-        sha256 = "bee652932886a34bbd5bd9ea3a3c52c08f462c005faa0e2353297dd5b9070989",
+        sha256 = "226b41c76e55899e9cc3bcbfed4646a610df5102dd9358add9450c80c5a14336",
         strip_prefix = "",
-        urls = ["https://storage.googleapis.com/pixie-dev-public/sysroots/pl6/sysroot-amd64-test.tar.gz"],
+        urls = [
+            "https://github.com/pixie-io/dev-artifacts/releases/download/sysroots%2Fpl8/sysroot-amd64-test.tar.gz",
+            "https://storage.googleapis.com/pixie-dev-public/sysroots/pl8/sysroot-amd64-test.tar.gz",
+        ],
     ),
     sysroot_x86_64_glibc2_36_debug = dict(
-        sha256 = "5639c73b5afd7c16bbdcbfcbd54262ea232283a5f5b4852e51c77062dea62f2e",
+        sha256 = "331d6c258a4abf5b877d93ae1d672fdd8758f5dafd7e614e19c5c20916ca1585",
         strip_prefix = "",
-        urls = ["https://storage.googleapis.com/pixie-dev-public/sysroots/pl6/sysroot-amd64-debug.tar.gz"],
+        urls = [
+            "https://github.com/pixie-io/dev-artifacts/releases/download/sysroots%2Fpl8/sysroot-amd64-debug.tar.gz",
+            "https://storage.googleapis.com/pixie-dev-public/sysroots/pl8/sysroot-amd64-debug.tar.gz",
+        ],
     ),
     sysroot_aarch64_glibc2_36_runtime = dict(
-        sha256 = "48ea0856326974dca562db5a4e7ef09befef50fdb7a13698966e06393a3b090c",
+        sha256 = "2974c29dd6baef1416d5cc2781306823885e64acaf0ce8bd3b447929b6103f4e",
         strip_prefix = "",
-        urls = ["https://storage.googleapis.com/pixie-dev-public/sysroots/pl6/sysroot-arm64-runtime.tar.gz"],
+        urls = [
+            "https://github.com/pixie-io/dev-artifacts/releases/download/sysroots%2Fpl8/sysroot-arm64-runtime.tar.gz",
+            "https://storage.googleapis.com/pixie-dev-public/sysroots/pl8/sysroot-arm64-runtime.tar.gz",
+        ],
     ),
     sysroot_aarch64_glibc2_36_build = dict(
-        sha256 = "304e86332754e473938d5614a12e8676fb36481096ab6915b7d667faa0373a74",
+        sha256 = "04b957f6be840372e54075b966f76ea4238294028620ac8f8257c9e0fdb15bef",
         strip_prefix = "",
-        urls = ["https://storage.googleapis.com/pixie-dev-public/sysroots/pl6/sysroot-arm64-build.tar.gz"],
+        urls = [
+            "https://github.com/pixie-io/dev-artifacts/releases/download/sysroots%2Fpl8/sysroot-arm64-build.tar.gz",
+            "https://storage.googleapis.com/pixie-dev-public/sysroots/pl8/sysroot-arm64-build.tar.gz",
+        ],
     ),
     sysroot_aarch64_glibc2_36_test = dict(
-        sha256 = "12be586d2562e1ed49e4ea5c178c8df73c596c522b75b9b1de1700e081c6fd1e",
+        sha256 = "59934822ae0ffe1e990fba589a94651eb92d0bddf2e40419f81299cf600eb62f",
         strip_prefix = "",
-        urls = ["https://storage.googleapis.com/pixie-dev-public/sysroots/pl6/sysroot-arm64-test.tar.gz"],
+        urls = [
+            "https://github.com/pixie-io/dev-artifacts/releases/download/sysroots%2Fpl8/sysroot-arm64-test.tar.gz",
+            "https://storage.googleapis.com/pixie-dev-public/sysroots/pl8/sysroot-arm64-test.tar.gz",
+        ],
     ),
     sysroot_aarch64_glibc2_36_debug = dict(
-        sha256 = "4cb30d6f9e73f66a03ba34a74fb51171ac7d45365102c41db2add0b852c7db33",
+        sha256 = "910d4ba853dedb6b9fcd05c862ed3e4a933cea941334064b7b62f8ae7fe4b87d",
         strip_prefix = "",
-        urls = ["https://storage.googleapis.com/pixie-dev-public/sysroots/pl6/sysroot-arm64-debug.tar.gz"],
+        urls = [
+            "https://github.com/pixie-io/dev-artifacts/releases/download/sysroots%2Fpl8/sysroot-arm64-debug.tar.gz",
+            "https://storage.googleapis.com/pixie-dev-public/sysroots/pl8/sysroot-arm64-debug.tar.gz",
+        ],
     ),
 )
 

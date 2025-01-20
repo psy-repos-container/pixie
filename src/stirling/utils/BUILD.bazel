@@ -14,7 +14,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-load("//bazel:pl_build_system.bzl", "pl_cc_library", "pl_cc_test")
+load("//bazel:pl_build_system.bzl", "pl_cc_bpf_test", "pl_cc_library", "pl_cc_test")
 
 package(default_visibility = ["//src/stirling:__subpackages__"])
 
@@ -71,14 +71,7 @@ pl_cc_test(
         "testdata/config.gz",
     ] + glob([
         "testdata/test_header_packages/*",
-        "testdata/sample_host_ubuntu/**",
-        "testdata/sample_host_debian/**",
     ]),
-    tags = [
-        # Getting kernel version from VDSO fails because the system VDSO will be used with userspace qemu,
-        # so we need full qemu emulation to test that for ARM.
-        "requires_full_qemu_emulation",
-    ],
     deps = [
         ":cc_library",
         "//src/common/system:cc_library",
@@ -127,7 +120,7 @@ pl_cc_test(
     ],
 )
 
-pl_cc_test(
+pl_cc_bpf_test(
     name = "detect_application_bpf_test",
     timeout = "moderate",
     srcs = ["detect_application_bpf_test.cc"],
@@ -137,7 +130,7 @@ pl_cc_test(
     ],
     deps = [
         ":cc_library",
-        "//src/stirling/source_connectors/socket_tracer/testing:container_images",
+        "//src/stirling/source_connectors/socket_tracer/testing/container_images:node_14_18_1_alpine_container",
     ],
 )
 

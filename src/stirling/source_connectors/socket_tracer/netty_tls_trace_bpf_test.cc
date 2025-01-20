@@ -28,7 +28,7 @@
 #include "src/shared/types/types.h"
 #include "src/stirling/core/data_table.h"
 #include "src/stirling/source_connectors/socket_tracer/socket_trace_connector.h"
-#include "src/stirling/source_connectors/socket_tracer/testing/container_images.h"
+#include "src/stirling/source_connectors/socket_tracer/testing/container_images/thrift_mux_server_container.h"
 #include "src/stirling/source_connectors/socket_tracer/testing/protocol_checkers.h"
 #include "src/stirling/source_connectors/socket_tracer/testing/socket_trace_bpf_test_fixture.h"
 #include "src/stirling/source_connectors/socket_tracer/uprobe_symaddrs.h"
@@ -39,39 +39,38 @@ namespace stirling {
 
 namespace mux = protocols::mux;
 
-using ::px::stirling::testing::EqHTTPRecord;
 using ::px::stirling::testing::EqMuxRecord;
+using ::px::stirling::testing::GetEncrypted;
 using ::px::stirling::testing::GetTargetRecords;
 using ::px::stirling::testing::SocketTraceBPFTestFixture;
 using ::px::stirling::testing::ToRecordVector;
 
+using ::testing::IsTrue;
 using ::testing::StrEq;
-using ::testing::UnorderedElementsAre;
 
 class ThriftMuxServerContainerWrapper : public ::px::stirling::testing::ThriftMuxServerContainer {};
 
-// The Init() function is used to set flags for the entire test.
-// We can't do this in the MuxTraceTest constructor, because it will be too late
-// (SocketTraceBPFTestFixture will already have been constructed).
-bool Init() {
-  // Make sure Mux tracing is enabled.
-  FLAGS_stirling_enable_mux_tracing = true;
-
-  // We turn off CQL and NATS tracing to give some BPF instructions back for Mux.
-  // This is required for older kernels with only 4096 BPF instructions.
-  FLAGS_stirling_enable_cass_tracing = false;
-  FLAGS_stirling_enable_nats_tracing = false;
-
-  // Enable the raw fptr fallback for determining ssl lib version.
-  FLAGS_openssl_raw_fptrs_enabled = true;
-  return true;
+namespace {
+constexpr bool kClientSideTracing = false;
 }
 
-bool kInit = Init();
-
 template <typename TServerContainer>
-class BaseOpenSSLTraceTest : public SocketTraceBPFTestFixture</* TClientSideTracing */ false> {
+class BaseOpenSSLTraceTest : public SocketTraceBPFTestFixture<kClientSideTracing> {
  protected:
+  void SetUp() override {
+    PX_SET_FOR_SCOPE(FLAGS_stirling_enable_mux_tracing, true);
+
+    // We turn off CQL and NATS tracing to give some BPF instructions back for Mux.
+    // This is required for older kernels with only 4096 BPF instructions.
+    PX_SET_FOR_SCOPE(FLAGS_stirling_enable_cass_tracing, false);
+    PX_SET_FOR_SCOPE(FLAGS_stirling_enable_nats_tracing, false);
+
+    // Enable the raw fptr fallback for determining ssl lib version.
+    PX_SET_FOR_SCOPE(FLAGS_openssl_raw_fptrs_enabled, true);
+
+    SocketTraceBPFTestFixture<kClientSideTracing>::SetUp();
+  }
+
   BaseOpenSSLTraceTest() {
     // Run the nginx HTTPS server.
     // The container runner will make sure it is in the ready state before unblocking.
@@ -154,15 +153,18 @@ TYPED_TEST(NettyTLSTraceTest, mtls_thriftmux_client) {
   this->StopTransferDataThread();
 
   std::vector<TaggedRecordBatch> tablets = this->ConsumeRecords(SocketTraceConnector::kMuxTableNum);
-  ASSERT_NOT_EMPTY_AND_GET_RECORDS(const types::ColumnWrapperRecordBatch& record_batch, tablets);
-  std::vector<mux::Record> server_records =
-      GetTargetRecords<mux::Record>(record_batch, this->server_.process_pid());
+  ASSERT_NOT_EMPTY_AND_GET_RECORDS(const types::ColumnWrapperRecordBatch& rb, tablets);
+
+  const std::vector<size_t> indices =
+      testing::FindRecordIdxMatchesPID(rb, kMuxUPIDIdx, this->server_.process_pid());
+  std::vector<mux::Record> server_records = ToRecordVector<mux::Record>(rb, indices);
 
   mux::Record tinitCheck = RecordWithType(mux::Type::kRerrOld);
   mux::Record tinit = RecordWithType(mux::Type::kTinit);
   mux::Record pingRecord = RecordWithType(mux::Type::kTping);
   mux::Record dispatchRecord = RecordWithType(mux::Type::kTdispatch);
 
+  EXPECT_THAT(GetEncrypted(rb, kMuxEncryptedIdx, indices), Contains(IsTrue()));
   EXPECT_THAT(server_records, Contains(EqMuxRecord(tinitCheck)));
   EXPECT_THAT(server_records, Contains(EqMuxRecord(tinit)));
   EXPECT_THAT(server_records, Contains(EqMuxRecord(pingRecord)));

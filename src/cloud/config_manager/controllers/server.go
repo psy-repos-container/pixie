@@ -34,10 +34,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc/metadata"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/client-go/kubernetes"
 
+	"px.dev/pixie/src/api/proto/uuidpb"
 	atpb "px.dev/pixie/src/cloud/artifact_tracker/artifacttrackerpb"
 	cpb "px.dev/pixie/src/cloud/config_manager/configmanagerpb"
 	"px.dev/pixie/src/cloud/vzmgr/vzmgrpb"
@@ -54,18 +53,16 @@ type Server struct {
 	atClient            atpb.ArtifactTrackerClient
 	deployKeyClient     vzmgrpb.VZDeploymentKeyServiceClient
 	vzFeatureFlagClient VizierFeatureFlagClient
-	clientset           *kubernetes.Clientset
-	rm                  meta.RESTMapper
+	vzmgrClient         vzmgrpb.VZMgrServiceClient
 }
 
 // NewServer creates GRPC handlers.
-func NewServer(atClient atpb.ArtifactTrackerClient, deployKeyClient vzmgrpb.VZDeploymentKeyServiceClient, ldSDKKey string, clientset *kubernetes.Clientset, rm meta.RESTMapper) *Server {
+func NewServer(atClient atpb.ArtifactTrackerClient, deployKeyClient vzmgrpb.VZDeploymentKeyServiceClient, ldSDKKey string, vzmgrClient vzmgrpb.VZMgrServiceClient) *Server {
 	return &Server{
 		atClient:            atClient,
 		deployKeyClient:     deployKeyClient,
 		vzFeatureFlagClient: NewVizierFeatureFlagClient(ldSDKKey),
-		clientset:           clientset,
-		rm:                  rm,
+		vzmgrClient:         vzmgrClient,
 	}
 }
 
@@ -104,6 +101,25 @@ func (s *Server) getOrgIDForDeployKey(deployKey string) (uuid.UUID, error) {
 	return orgID, err
 }
 
+// Helper function that looks up the org ID based on the VizierID so we can use it to set feature flags.
+func (s *Server) getOrgIDForVizier(vizierID *uuidpb.UUID) (uuid.UUID, error) {
+	serviceAuthToken, err := getServiceCredentials(viper.GetString("jwt_signing_key"))
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization",
+		fmt.Sprintf("bearer %s", serviceAuthToken))
+
+	resp, err := s.vzmgrClient.GetOrgFromVizier(ctx, vizierID)
+	if err != nil || resp == nil || resp.OrgID == nil {
+		return uuid.Nil, fmt.Errorf("Error fetching Vizier org ID: %s", err.Error())
+	}
+	orgID := utils.UUIDFromProtoOrNil(resp.OrgID)
+
+	return orgID, nil
+}
+
 const (
 	bytesPerMiB                 = 1024 * 1024
 	defaultTableStorePercentage = 0.6
@@ -124,7 +140,11 @@ func AddDefaultTableStoreSize(pemMemoryRequest string, customPEMFlags map[string
 	if pemMemoryRequest == "" {
 		defaultTableStoreSizeMB = defaultUncappedTableStoreSizeMB
 	} else {
-		pemMemorySizeBytes := resource.MustParse(pemMemoryRequest)
+		pemMemorySizeBytes, err := resource.ParseQuantity(pemMemoryRequest)
+		if err != nil {
+			log.Errorf("Failed to parse quantity %s", pemMemoryRequest)
+			return
+		}
 		defaultTableStoreSizeBytes := defaultTableStorePercentage * float64(pemMemorySizeBytes.Value())
 		defaultTableStoreSizeMB = int(math.Floor(defaultTableStoreSizeBytes / bytesPerMiB))
 		if defaultTableStoreSizeMB == 0 {
@@ -219,12 +239,25 @@ func (s *Server) GetConfigForVizier(ctx context.Context,
 	}
 	AddDefaultTableStoreSize(tmplValues.PEMMemoryRequest, tmplValues.CustomPEMFlags)
 
-	// Next we inject any feature flags that we want to set for this org.
-	orgID, err := s.getOrgIDForDeployKey(tmplValues.DeployKey)
+	// Attempt to get the org ID from DeployKey, otherwise from the Vizier.
+	var orgID uuid.UUID
+	orgID, err = s.getOrgIDForDeployKey(tmplValues.DeployKey)
 	if err != nil || orgID == uuid.Nil {
-		log.WithError(err).Error("Error getting org ID from deploy key, skipping feature flag logic")
-	} else {
+		log.WithError(err).Error("Error getting org ID from deploy key")
+	}
+	if orgID == uuid.Nil && in.VizierID != nil {
+		orgID, err = s.getOrgIDForVizier(in.VizierID)
+		if err != nil || orgID == uuid.Nil {
+			log.WithError(err).Error("Error getting the org ID from Vizier")
+		}
+	}
+
+	// Next we inject any feature flags that we want to set for this org.
+	if orgID != uuid.Nil {
 		AddFeatureFlagsToTemplate(s.vzFeatureFlagClient, orgID, tmplValues)
+		log.Info("Added feature flags to template")
+	} else {
+		log.Error("Skipping feature flag logic")
 	}
 
 	vzYamls, err := yamls.ExecuteTemplatedYAMLs(templatedYAMLs, vizieryamls.VizierTmplValuesToArgs(tmplValues))
@@ -236,7 +269,7 @@ func (s *Server) GetConfigForVizier(ctx context.Context,
 	// Apply custom patches, if any.
 	if in.VzSpec.Patches != nil || len(in.VzSpec.Patches) > 0 {
 		for _, y := range vzYamls {
-			patchedYAML, err := yamls.AddPatchesToYAML(s.clientset, y.YAML, in.VzSpec.Patches, s.rm)
+			patchedYAML, err := yamls.AddPatchesToYAML(y.YAML, in.VzSpec.Patches)
 			if err != nil {
 				log.WithError(err).Error("Failed to add patches")
 				return nil, err

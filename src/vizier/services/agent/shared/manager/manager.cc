@@ -65,6 +65,9 @@ DEFINE_string(vizier_id, gflags::StringFromEnv("PL_VIZIER_ID", ""), "The ID of t
 DEFINE_string(vizier_name, gflags::StringFromEnv("PL_VIZIER_NAME", ""),
               "The name of the cluster according to vizier.");
 
+DEFINE_string(vizier_namespace, gflags::StringFromEnv("PL_POD_NAMESPACE", ""),
+              "The namespace in which vizier is deployed.");
+
 namespace px {
 namespace vizier {
 namespace agent {
@@ -94,7 +97,8 @@ std::shared_ptr<services::metadata::CronScriptStoreService::Stub> CreateCronScri
 
 Manager::Manager(sole::uuid agent_id, std::string_view pod_name, std::string_view host_ip,
                  int grpc_server_port, services::shared::agent::AgentCapabilities capabilities,
-                 std::string_view nats_url, std::string_view mds_url)
+                 services::shared::agent::AgentParameters parameters, std::string_view nats_url,
+                 std::string_view mds_url, system::KernelInfo kernel_info)
     : grpc_channel_creds_(SSL::DefaultGRPCClientCreds()),
       time_system_(std::make_unique<px::event::RealTimeSystem>()),
       api_(std::make_unique<px::event::APIImpl>(time_system_.get())),
@@ -127,8 +131,10 @@ Manager::Manager(sole::uuid agent_id, std::string_view pod_name, std::string_vie
 
   info_.agent_id = agent_id;
   info_.capabilities = std::move(capabilities);
+  info_.parameters = std::move(parameters);
   info_.pod_name = std::string(pod_name);
   info_.host_ip = std::string(host_ip);
+  info_.kernel_info = kernel_info;
 }
 
 Status Manager::Init() {
@@ -285,7 +291,8 @@ Status Manager::PostRegisterHook(uint32_t asid) {
   mds_manager_ = std::make_unique<px::md::AgentMetadataStateManagerImpl>(
       info_.hostname, info_.asid, info_.pid, info_.pod_name, info_.agent_id,
       info_.capabilities.collects_data(), px::system::Config::GetInstance(),
-      agent_metadata_filter_.get(), sole::rebuild(FLAGS_vizier_id), FLAGS_vizier_name);
+      agent_metadata_filter_.get(), sole::rebuild(FLAGS_vizier_id), FLAGS_vizier_name,
+      FLAGS_vizier_namespace, time_system_.get());
   // Register the Carnot callback for metadata.
   carnot_->RegisterAgentMetadataCallback(
       std::bind(&px::md::AgentMetadataStateManager::CurrentAgentMetadataState, mds_manager_.get()));

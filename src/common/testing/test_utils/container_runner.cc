@@ -26,13 +26,6 @@ namespace px {
 // Number of seconds to wait between each attempt.
 constexpr int kSleepSeconds = 1;
 
-ContainerRunner::ContainerRunner(std::string_view image, std::string_view instance_name_prefix,
-                                 std::string_view ready_message)
-    : image_(image), instance_name_prefix_(instance_name_prefix), ready_message_(ready_message) {
-  std::string out = px::Exec("podman pull -q" + image_).ConsumeValueOrDie();
-  LOG(INFO) << out;
-}
-
 ContainerRunner::ContainerRunner(std::filesystem::path image_tar,
                                  std::string_view instance_name_prefix,
                                  std::string_view ready_message)
@@ -48,7 +41,7 @@ ContainerRunner::ContainerRunner(std::filesystem::path image_tar,
   std::string_view image_line = lines.back();
   constexpr std::string_view kLoadedImagePrefix = "Loaded image";
   std::vector<std::string> splits = absl::StrSplit(image_line, absl::ByString(": "));
-  CHECK_EQ(splits.size(), 2);
+  CHECK_EQ(splits.size(), 2UL);
   CHECK(absl::StartsWith(splits[0], kLoadedImagePrefix));
   image_ = splits[1];
 }
@@ -233,6 +226,8 @@ StatusOr<std::string> ContainerRunner::Run(const std::chrono::seconds& timeout,
   return container_out;
 }
 
+Status ContainerRunner::Stdout(std::string* out) { return podman_.Stdout(out); }
+
 void ContainerRunner::Stop() {
   // Clean-up the container.
   if (podman_.IsRunning()) {
@@ -241,6 +236,6 @@ void ContainerRunner::Stop() {
   podman_.Wait();
 }
 
-void ContainerRunner::Wait() { podman_.Wait(); }
+void ContainerRunner::Wait(bool close_pipe) { podman_.Wait(close_pipe); }
 
 }  // namespace px

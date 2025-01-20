@@ -2,7 +2,7 @@ workspace(name = "px")
 
 load("//:workspace.bzl", "check_min_bazel_version")
 
-check_min_bazel_version("5.1.1")
+check_min_bazel_version("6.2.0")
 
 load("//bazel:repositories.bzl", "pl_cc_toolchain_deps", "pl_deps")
 
@@ -33,7 +33,7 @@ pl_go_overrides()
 
 go_download_sdk(
     name = "go_sdk",
-    version = "1.20",
+    version = "1.21.0",
 )
 
 go_rules_dependencies()
@@ -79,6 +79,10 @@ apple_support_dependencies()
 load("//bazel:pl_workspace.bzl", "pl_container_images", "pl_model_files", "pl_workspace_setup")
 
 pl_workspace_setup()
+
+load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
+
+py_repositories()
 
 # The pip_deps rule cannot be loaded until we load all the basic packages in the Pixie
 # workspace. Also, bazel requires that loads are done at the top level (not in a function), so
@@ -136,10 +140,12 @@ tf_workspace0()
 
 pl_model_files()
 
-load("@rules_python//python:repositories.bzl", "python_register_toolchains")
-
 python_register_toolchains(
     name = "python3_10",
+    # Allow the root user to build the code base since this is a current requirement for
+    # building in a containerized environment. See https://github.com/bazelbuild/rules_python/pull/713
+    # for more details.
+    ignore_root_user_error = True,
     # Available versions are listed in @rules_python//python:versions.bzl.
     # We recommend using the same version your team is already standardized on.
     python_version = "3.10",
@@ -160,6 +166,7 @@ vizier_api_install_deps()
 
 pip_parse(
     name = "pxapi_python_doc_deps",
+    python_interpreter_target = interpreter,
     requirements_lock = "//src/api/python/doc:requirements.bazel.txt",
 )
 
@@ -168,17 +175,7 @@ load("@pxapi_python_doc_deps//:requirements.bzl", pxapi_py_doc_install_deps = "i
 pxapi_py_doc_install_deps()
 
 # Setup thrift: used for building Stirling tracing targets.
-load("//bazel:netty.bzl", "fetch_netty_tcnative_jars")
 load("//bazel:thrift.bzl", "thrift_deps")
-
-# TODO(ddelnano): Remove once rules_jvm_external is no longer impacted.
-# Recent netty-tcnative releases cause rules_jvm_external to fail with a
-# cyclic dependency issue due to its use of multi-classifiers. This is fixed
-# by installing the netty jars manually and then overriding maven to use them. See
-# https://github.com/bazelbuild/rules_jvm_external/issues/704 for more details.
-netty_tcnative_version = "2.0.53.Final"
-
-fetch_netty_tcnative_jars(netty_tcnative_version)
 
 thrift_deps(scala_version = scala_version)
 
@@ -231,16 +228,36 @@ go_download_sdk(
 
 go_download_sdk(
     name = "go_sdk_1_19",
-    version = "1.19.5",
+    version = "1.19.10",
 )
 
 go_download_sdk(
     name = "go_sdk_1_20",
-    version = "1.20",
+    version = "1.20.5",
+)
+
+go_download_sdk(
+    name = "go_sdk_1_21",
+    version = "1.21.0",
+)
+
+# The go_sdk_boringcrypto SDK is used for testing boringcrypto specific functionality (TLS tracing).
+# This SDK is used for specific test cases and is not meant to be used wholesale for a particular go
+# version.
+#
+# rules_go doesn't support using multiple SDKs with the same version and differing
+# GOEXPERIMENTs. This can use the same version as our latest go version once
+# https://github.com/bazelbuild/rules_go/issues/3582 is addressed.
+go_download_sdk(
+    name = "go_sdk_boringcrypto",
+    experiments = ["boringcrypto"],
+    # TODO(james): update this to 1.21.0, once there is a 1.21.1 release.
+    version = "1.20.4",
 )
 
 pip_parse(
     name = "amqp_gen_reqs",
+    python_interpreter_target = interpreter,
     requirements_lock = "//src/stirling/source_connectors/socket_tracer/protocols/amqp/amqp_code_generator:requirements.bazel.txt",
 )
 
@@ -250,6 +267,7 @@ amp_gen_install_deps()
 
 pip_parse(
     name = "protocol_inference",
+    python_interpreter_target = interpreter,
     requirements_lock = "//src/stirling/protocol_inference:requirements.bazel.txt",
 )
 
@@ -266,6 +284,7 @@ py_image_repos()
 
 pip_parse(
     name = "amqp_bpf_test_requirements",
+    python_interpreter_target = interpreter,
     requirements_lock = "//src/stirling/source_connectors/socket_tracer/testing/containers/amqp:requirements.bazel.txt",
 )
 
@@ -288,3 +307,13 @@ maven_install(
 load("@px_deps//:defs.bzl", px_deps_pinned_maven_install = "pinned_maven_install")
 
 px_deps_pinned_maven_install()
+
+pip_parse(
+    name = "mongodb_bpf_test_requirements",
+    python_interpreter_target = interpreter,
+    requirements_lock = "//src/stirling/source_connectors/socket_tracer/testing/containers/mongodb:requirements.bazel.txt",
+)
+
+load("@mongodb_bpf_test_requirements//:requirements.bzl", mongodb_bpf_test_install_deps = "install_deps")
+
+mongodb_bpf_test_install_deps()

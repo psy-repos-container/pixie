@@ -17,6 +17,7 @@
 execute 'install go linters' do
   command %(go install golang.org/x/lint/golint@v0.0.0-20210508222113-6edffad5e616 && \
             go install golang.org/x/tools/cmd/goimports@v0.1.2 && \
+            go clean -modcache && \
             go clean -cache)
 end
 
@@ -25,7 +26,7 @@ execute 'install js linters' do
 end
 
 execute 'install py linters' do
-  command 'python3 -m pip install flake8 flake8-mypy yamllint --no-cache-dir && python3 -m pip cache purge'
+  command 'python3 -m pip install --break-system-packages flake8 flake8-mypy yamllint --no-cache-dir && python3 -m pip cache purge'
 end
 
 common_remote_bin 'prototool'

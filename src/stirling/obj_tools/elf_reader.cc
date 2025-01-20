@@ -605,6 +605,19 @@ StatusOr<ELFIO::section*> ElfReader::SectionWithName(std::string_view section_na
   return error::NotFound("Could not find section=$0 in binary=$1", section_name, binary_path_);
 }
 
+StatusOr<uint64_t> ElfReader::VirtualAddrToBinaryAddr(uint64_t virtual_addr) {
+  for (int i = 0; i < elf_reader_.segments.size(); i++) {
+    ELFIO::segment* segment = elf_reader_.segments[i];
+    uint64_t virt_addr = segment->get_virtual_address();
+    uint64_t offset = segment->get_offset();
+    uint64_t size = segment->get_file_size();
+    if (virtual_addr >= virt_addr && virtual_addr < virt_addr + size) {
+      return virtual_addr - virt_addr + offset;
+    }
+  }
+  return error::Internal("Could not find binary address for virtual address=$0", virtual_addr);
+}
+
 StatusOr<utils::u8string> ElfReader::SymbolByteCode(std::string_view section,
                                                     const SymbolInfo& symbol) {
   PX_ASSIGN_OR_RETURN(ELFIO::section * text_section, SectionWithName(section));
@@ -613,6 +626,18 @@ StatusOr<utils::u8string> ElfReader::SymbolByteCode(std::string_view section,
   std::ifstream ifs(binary_path_, std::ios::binary);
   if (!ifs.seekg(offset)) {
     return error::Internal("Failed to seek position=$0 in binary=$1", offset, binary_path_);
+  }
+  // To protect against our ELF parsing logic locating bogus memory, set a bound on
+  // how large of a string we will allocate. SymbolByteCode's main use case is to determine
+  // return instructions for the crypto/tls.(*Conn).Write and crypto/tls.(*Conn).Read Go functions.
+  // These symbols are roughly 2 KiB and were used to inform the threshold below. We apply
+  // an additional 100x multiplier for additional headroom.
+  // See https://github.com/pixie-io/pixie/issues/1111 for more details.
+  if (symbol.size > 100 * 2048) {
+    return error::Internal(
+        "ELF symbol=$0 bytecode detected as size=$1 bytes. Refusing to preallocate that much "
+        "memory",
+        symbol.name, symbol.size);
   }
   utils::u8string byte_code(symbol.size, '\0');
   auto* buf = reinterpret_cast<char*>(byte_code.data());

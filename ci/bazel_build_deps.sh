@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
+set -o pipefail
 
 # This script finds all the Bazel targets based on which files are changed and flags passed in.
 
@@ -24,7 +25,18 @@ cd "$(git rev-parse --show-toplevel)" || exit
 bazel_cquery=("bazel" "cquery" "--keep_going" "--noshow_progress")
 
 # A list of patterns that will trigger a full build.
-poison_patterns=('^Jenkinsfile' '^bazel\/' '^ci\/' '^docker\.properties' '^\.bazelrc' '^BUILD.bazel'  '^docker.properties')
+poison_patterns=(
+  '^\.bazelrc'
+  '^\.github\/workflows\/build_and_test\.yaml'
+  '^bazel\/'
+  '^BUILD.bazel'
+  '^ci\/'
+  '^docker.properties'
+  '^docker\.properties'
+  '^go.mod'
+  '^go.sum'
+  '^Jenkinsfile'
+)
 
 # A list of patterns that will guard BPF targets.
 # We won't run BPF targets unless there are changes to these patterns.
@@ -37,7 +49,6 @@ run_bpf_targets=false
 
 commit_range=$(git merge-base origin/main HEAD)
 
-ui_excludes="except //src/ui/..."
 bpf_excludes="except attr('tags', 'requires_bpf', //...)"
 go_xcompile_excludes="except //src/pixie_cli:px_darwin_amd64 except //src/pixie_cli:px_darwin_arm64"
 buildables_excludes="except(kind(test, //...)) except(kind(container_image, //...))"
@@ -53,7 +64,7 @@ function usage() {
     echo " -a all_targets=${all_targets}" >&2
 }
 
-while getopts "abhc:" option; do
+while getopts "abh" option; do
   case "${option}" in
     a )
        all_targets=true
@@ -82,7 +93,7 @@ done
 #     BPF
 #     BPF ASAN/TSAN
 #
-# This list needs to be kept in sync between the Jenkinsfile, .bazelrc and this file.
+# This list needs to be kept in sync between the ci/github/matrix.yaml, and this file.
 # Query for the associated buildables & tests and write them to a file:
 #     bazel_{buildables, tests}_clang_opt
 #     bazel_{buildables, tests}_clang_dbg
@@ -102,7 +113,7 @@ function compute_targets() {
   for file in $(git diff --name-only "${commit_range}" ); do
     for pat in "${poison_patterns[@]}"; do
       if [[ "$file" =~ ${pat} ]]; then
-        echo "File ${file} with ${pat} modified. Triggering full build"
+        echo "File ${file} with ${pat} modified. Triggering full build" >&2
         targets=("//...")
         return 0
       fi
@@ -122,14 +133,14 @@ function compute_targets() {
     fi
   done
 
-  targets+=("rdeps(//..., set(${changed_files[*]}))")
+  targets+=("rdeps(//..., set(${changed_files[*]}))  intersect //...")
 }
 
 function check_bpf_trigger() {
   for file in $(git diff --name-only "${commit_range}" ); do
     for pat in "${bpf_patterns[@]}"; do
       if [[ "$file" =~ ${pat} ]]; then
-        echo "File ${file} with ${pat} modified. Triggering bpf targets"
+        echo "File ${file} with ${pat} modified. Triggering bpf targets" >&2
         run_bpf_targets=true
         return 0
       fi
@@ -140,7 +151,7 @@ function check_bpf_trigger() {
 starlark_cquery_file="ci/cquery_ignore_non_target_and_incompatible.bzl"
 function query_compatible_targets() {
   bazel_config="$1"
-  "${bazel_cquery[@]}" --config="${bazel_config}" --notool_deps --output=starlark --starlark:file "${starlark_cquery_file}"	"${@:2}" | grep -v "^None$" | sort | uniq
+  "${bazel_cquery[@]}" --config="${bazel_config}" --notool_deps --output=starlark --starlark:file "${starlark_cquery_file}" "${@:2}" | (grep -v "^None$" || true) | sort | uniq
 }
 
 compute_targets

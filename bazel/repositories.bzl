@@ -92,7 +92,7 @@ def _local_repo_impl(name, **kwargs):
 def _git_repo(name, **kwargs):
     _git_repo_impl(name, **kwargs)
 
-def _local_repo(name, **kwargs):
+def _local_repo(name, **kwargs):  # buildifier: disable=unused-variable
     _local_repo_impl(name, **kwargs)
 
 # For bazel repos do not require customization.
@@ -124,7 +124,7 @@ def _cc_deps():
     _bazel_repo("com_google_protobuf", patches = ["//bazel/external:protobuf_gogo_hack.patch", "//bazel/external:protobuf_text_format.patch", "//bazel/external:protobuf_warning.patch"], patch_args = ["-p1"])
     _bazel_repo("com_github_grpc_grpc", patches = ["//bazel/external:grpc.patch", "//bazel/external:grpc_go_toolchain.patch", "//bazel/external:grpc_test_visibility.patch"], patch_args = ["-p1"])
 
-    _bazel_repo("boringssl")
+    _bazel_repo("boringssl", patches = ["//bazel/external:boringssl.patch"], patch_args = ["-p0"])
     _bazel_repo("com_google_benchmark")
     _bazel_repo("com_google_googletest")
     _bazel_repo("com_github_gflags_gflags")
@@ -167,6 +167,7 @@ def _cc_deps():
     _bazel_repo("com_github_opentelemetry_proto", build_file = "//bazel/external:opentelemetry.BUILD")
     _bazel_repo("com_github_uriparser_uriparser", build_file = "//bazel/external:uriparser.BUILD")
     _bazel_repo("com_github_libbpf_libbpf", build_file = "//bazel/external:libbpf.BUILD")
+    _bazel_repo("com_github_mongodb_mongo_c_driver", build_file = "//bazel/external:mongo_c_driver.BUILD")
 
     # Uncomment these to develop bcc and/or bpftrace locally. Should also comment out the corresponding _bazel_repo lines.
     # _local_repo("com_github_iovisor_bcc", build_file = "//bazel/external/local_dev:bcc.BUILD")
@@ -183,6 +184,8 @@ def _cc_deps():
     _include_all_repo("com_github_libuv_libuv", patches = ["//bazel/external:libuv.patch"], patch_args = ["-p1"])
     _include_all_repo("com_github_libarchive_libarchive", patches = ["//bazel/external:libarchive.patch"], patch_args = ["-p1"])
 
+    _bazel_repo("org_libc_musl", build_file = "//bazel/external:musl.BUILD")
+
 def _java_deps():
     _bazel_repo("com_oracle_openjdk_18", build_file = "//bazel/external:jdk_includes.BUILD")
     remote_java_repository(
@@ -194,13 +197,14 @@ def _java_deps():
         ],
         sha256 = "102db28b450ff5eb8c497aacaececc5263a4e50e64b7cdc5c7baa8b216e73531",
         urls = [
+            "https://github.com/pixie-io/dev-artifacts/releases/download/graalvm%2Fpl1/graalvm-native-image-22.3.0-pl1.tar.gz",
             "https://storage.googleapis.com/pixie-dev-public/graalvm-native-image-22.3.0-pl1.tar.gz",
         ],
     )
 
 def _list_pl_deps(name):
     modules = dict()
-    for repo_name, repo_config in REPOSITORY_LOCATIONS.items():
+    for _, repo_config in REPOSITORY_LOCATIONS.items():
         if "manual_license_name" in repo_config:
             modules["#manual-license-name:" + repo_config["manual_license_name"]] = True
             continue
@@ -211,7 +215,7 @@ def _list_pl_deps(name):
                 best_url = url
         modules[best_url] = True
 
-    for repo_name, repo_config in GIT_REPOSITORY_LOCATIONS.items():
+    for _, repo_config in GIT_REPOSITORY_LOCATIONS.items():
         remote = repo_config["remote"]
         if remote.endswith(".git"):
             remote = remote[:-len(".git")]

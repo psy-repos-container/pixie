@@ -2977,6 +2977,41 @@ class IPToPodIDUDF : public ScalarUDF {
   static udfspb::UDFSourceExecutor Executor() { return udfspb::UDFSourceExecutor::UDF_KELVIN; }
 };
 
+class IPToPodIDAtTimeUDF : public ScalarUDF {
+ public:
+  /**
+   * @brief Gets the pod id of pod with given pod_ip
+   */
+  StringValue Exec(FunctionContext* ctx, StringValue pod_ip, Time64NSValue time) {
+    auto md = GetMetadataState(ctx);
+    return md->k8s_metadata_state().PodIDByIPAtTime(pod_ip, time.val);
+  }
+  static udf::ScalarUDFDocBuilder Doc() {
+    return udf::ScalarUDFDocBuilder(
+               "Convert IP address to the kubernetes pod ID that runs the backing service "
+               "given the time that the request was made.")
+        .Details(
+            "Converts the IP address into a kubernetes pod ID at the given time for that IP "
+            "address if it exists, otherwise returns an empty string. Converting to a pod ID "
+            "means you can then extract the corresponding service name using "
+            "`px.pod_id_to_service_name`.\nNote that this will not be able to convert IP "
+            "addresses into DNS names generally as this is limited to internal Kubernetes state.")
+        .Example(R"doc(
+        | # Convert to the Kubernetes pod ID.
+        | df.pod_id = px.ip_to_pod_id(df.remote_addr, df.time_)
+        | # Convert the ID to a readable name.
+        | df.service = px.pod_id_to_service_name(df.pod_id)
+        )doc")
+        .Arg("pod_ip", "The IP of a pod to convert.")
+        .Arg("time", "The time at which this trace was captured.")
+        .Returns("The Kubernetes ID of the pod if it exists, otherwise an empty string.");
+  }
+
+  // This UDF can currently only run on Kelvins, because only Kelvins have the IP to pod
+  // information.
+  static udfspb::UDFSourceExecutor Executor() { return udfspb::UDFSourceExecutor::UDF_KELVIN; }
+};
+
 class IPToServiceIDUDF : public ScalarUDF {
  public:
   StringValue Exec(FunctionContext* ctx, StringValue ip) {
@@ -3120,6 +3155,21 @@ class VizierNameUDF : public ScalarUDF {
   }
 };
 
+class VizierNamespaceUDF : public ScalarUDF {
+ public:
+  StringValue Exec(FunctionContext* ctx) {
+    auto md = GetMetadataState(ctx);
+    return md->vizier_namespace();
+  }
+
+  static udf::ScalarUDFDocBuilder Doc() {
+    return udf::ScalarUDFDocBuilder("Get the namespace where Vizier is deployed.")
+        .Details("Get the Kubernetes namespace in which the Vizier is deployed.")
+        .Example("df.vizier_namespace = px.vizier_namespace()")
+        .Returns("The Kubernetes namespace in which Vizier is deployed");
+  }
+};
+
 class CreateUPIDUDF : public udf::ScalarUDF {
  public:
   UInt128Value Exec(FunctionContext* ctx, Int64Value pid, Int64Value pid_start_time) {
@@ -3210,6 +3260,24 @@ class GetClusterCIDRRangeUDF : public udf::ScalarUDF {
 
  private:
   std::string cidrs_str_;
+};
+
+class NamespaceNameToNamespaceIDUDF : public ScalarUDF {
+ public:
+  StringValue Exec(FunctionContext* ctx, StringValue namespace_name) {
+    auto md = GetMetadataState(ctx);
+    auto namespace_id =
+        md->k8s_metadata_state().NamespaceIDByName(std::make_pair(namespace_name, namespace_name));
+    return namespace_id;
+  }
+
+  static udf::ScalarUDFDocBuilder Doc() {
+    return udf::ScalarUDFDocBuilder("Get the Kubernetes UID of the given namespace name.")
+        .Details("Get the Kubernetes UID of the given namespace name.")
+        .Example("df.kube_system_namespace_uid = px.namespace_name_to_namespace_id('kube-system')")
+        .Arg("arg1", "The name of the namespace to get the UID of.")
+        .Returns("The Kubernetes UID of the given namespace name");
+  }
 };
 
 void RegisterMetadataOpsOrDie(px::carnot::udf::Registry* registry);

@@ -132,8 +132,8 @@ type VizierMonitor struct {
 	pvcState  *vizierState
 	certState *vizierState
 
-	vzUpdate     func(context.Context, client.Object, ...client.UpdateOption) error
-	vzGet        func(context.Context, types.NamespacedName, client.Object) error
+	vzUpdate     func(context.Context, client.Object, ...client.SubResourceUpdateOption) error
+	vzGet        func(context.Context, types.NamespacedName, client.Object, ...client.GetOption) error
 	vzSpecUpdate func(context.Context, client.Object, ...client.UpdateOption) error
 }
 
@@ -141,7 +141,7 @@ type VizierMonitor struct {
 func (m *VizierMonitor) InitAndStartMonitor(cloudClient *grpc.ClientConn) {
 	// Initialize current state.
 	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	tr.TLSClientConfig = m.getTLSConfig()
 	m.httpClient = &http.Client{Transport: tr}
 	m.cloudClient = cloudClient
 	m.ctx, m.cancel = context.WithCancel(context.Background())
@@ -219,7 +219,7 @@ func (m *VizierMonitor) watchK8sPods() {
 	informer := m.factory.Core().V1().Pods().Informer()
 	stopper := make(chan struct{})
 	defer close(stopper)
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, _ = informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    m.onAddPod,
 		UpdateFunc: m.onUpdatePod,
 		DeleteFunc: m.onDeletePod,
@@ -269,6 +269,25 @@ func (m *VizierMonitor) checkCerts() error {
 	return nil
 }
 
+func (m *VizierMonitor) getTLSConfig() *tls.Config {
+	// This is used as a fallback incase we somehow fail to get the CA for the vizier.
+	fallbackInsecureConfig := &tls.Config{InsecureSkipVerify: true} // lgtm [go/disabled-certificate-check]
+
+	tlsSecret, err := m.clientset.CoreV1().Secrets(m.namespace).Get(context.Background(), "service-tls-certs", metav1.GetOptions{})
+	if err != nil {
+		log.WithError(err).Warn("failed to get certs secret, monitor will use insecure tls to check /statusz")
+		return fallbackInsecureConfig
+	}
+
+	certPool := x509.NewCertPool()
+	if ok := certPool.AppendCertsFromPEM(tlsSecret.Data["ca.crt"]); !ok {
+		log.WithError(err).Warn("failed add CA to pool, monitor will use insecure tls to check /statusz")
+		return fallbackInsecureConfig
+	}
+
+	return &tls.Config{RootCAs: certPool}
+}
+
 // vizierState details the state of Vizier at a snapshot.
 type vizierState struct {
 	// Reason is the description of the state. Should only be set with values enumerated in `src/shared/status/vzstatus.go`
@@ -309,7 +328,7 @@ func getNATSState(client HTTPClient, pods *concurrentPodMap) *vizierState {
 
 	u := url.URL{
 		Scheme: "http",
-		Host:   net.JoinHostPort(natsPod.pod.Status.PodIP, "8222"),
+		Host:   net.JoinHostPort(k8s.GetPodAddr(*natsPod.pod), "8222"),
 	}
 
 	resp, err := client.Get(u.String())
@@ -761,7 +780,6 @@ func (m *VizierMonitor) runReconciler() {
 
 // queryPodStatusz returns a pod's self-reported status as served by its statusz endpoint.
 func queryPodStatusz(client HTTPClient, pod *v1.Pod) (bool, string) {
-	podIP := pod.Status.PodIP
 	// Assume that the statusz endpoint is on the first port in the first container.
 	var port int32
 	if len(pod.Spec.Containers) > 0 && len(pod.Spec.Containers[0].Ports) > 0 {
@@ -770,7 +788,7 @@ func queryPodStatusz(client HTTPClient, pod *v1.Pod) (bool, string) {
 
 	u := url.URL{
 		Scheme: "https",
-		Host:   net.JoinHostPort(podIP, fmt.Sprintf("%d", port)),
+		Host:   net.JoinHostPort(k8s.GetPodAddr(*pod), fmt.Sprintf("%d", port)),
 		Path:   "statusz",
 	}
 	resp, err := client.Get(u.String())

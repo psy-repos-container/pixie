@@ -19,6 +19,7 @@
 #include "src/carnot/exec/otel_export_sink_node.h"
 
 #include <rapidjson/document.h>
+#include <simdutf.h>
 #include <chrono>
 #include <memory>
 #include <queue>
@@ -90,6 +91,14 @@ Status OTelExportSinkNode::CloseImpl(ExecState* exec_state) {
   return Status::OK();
 }
 
+void SetStringOrBytes(std::string str, ::opentelemetry::proto::common::v1::KeyValue* otel_attr) {
+  if (!simdutf::validate_utf8(str.data(), str.length())) {
+    otel_attr->mutable_value()->set_bytes_value(str);
+  } else {
+    otel_attr->mutable_value()->set_string_value(str);
+  }
+}
+
 template <typename C>
 void AddAttributes(google::protobuf::RepeatedPtrField<::opentelemetry::proto::common::v1::KeyValue>*
                        mutable_attributes,
@@ -98,14 +107,14 @@ void AddAttributes(google::protobuf::RepeatedPtrField<::opentelemetry::proto::co
     auto otel_attr = mutable_attributes->Add();
     otel_attr->set_key(px_attr.name());
     if (px_attr.has_string_value()) {
-      otel_attr->mutable_value()->set_string_value(px_attr.string_value());
+      SetStringOrBytes(px_attr.string_value(), otel_attr);
       continue;
     }
     auto attribute_col = rb.ColumnAt(px_attr.column().column_index()).get();
     switch (px_attr.column().column_type()) {
       case types::STRING: {
-        otel_attr->mutable_value()->set_string_value(
-            types::GetValueFromArrowArray<types::STRING>(attribute_col, row_idx));
+        SetStringOrBytes(types::GetValueFromArrowArray<types::STRING>(attribute_col, row_idx),
+                         otel_attr);
         break;
       }
       case types::INT64: {
@@ -193,7 +202,7 @@ void ReplicateData(const std::vector<planpb::OTelAttribute>& attributes_spec,
     for (const auto& [attribute_idx, value_idx] : Enumerate(permutation)) {
       auto attribute = data.mutable_resource()->add_attributes();
       attribute->set_key(attributes_spec[attribute_idx].name());
-      attribute->mutable_value()->set_string_value(values[attribute_idx][value_idx]);
+      SetStringOrBytes(values[attribute_idx][value_idx], attribute);
     }
     add_data(std::move(data));
   }
@@ -224,9 +233,9 @@ Status OTelExportSinkNode::ConsumeMetrics(ExecState* exec_state, const RowBatch&
     // TODO(philkuz) optimize by pooling metrics by resource within a batch.
     // TODO(philkuz) optimize by pooling data per metric per resource.
 
-    auto library_metrics = resource_metrics.add_instrumentation_library_metrics();
+    auto scope_metrics = resource_metrics.add_scope_metrics();
     for (const auto& metric_pb : plan_node_->metrics()) {
-      auto metric = library_metrics->add_metrics();
+      auto metric = scope_metrics->add_metrics();
       metric->set_name(metric_pb.name());
       metric->set_description(metric_pb.description());
       metric->set_unit(metric_pb.unit());
@@ -331,7 +340,7 @@ Status OTelExportSinkNode::ConsumeSpans(ExecState* exec_state, const RowBatch& r
   }
   context.set_compression_algorithm(GRPC_COMPRESS_GZIP);
 
-  metrics_response_.Clear();
+  trace_response_.Clear();
   opentelemetry::proto::collector::trace::v1::ExportTraceServiceRequest request;
 
   for (int64_t row_idx = 0; row_idx < rb.ColumnAt(0)->length(); ++row_idx) {
@@ -340,9 +349,9 @@ Status OTelExportSinkNode::ConsumeSpans(ExecState* exec_state, const RowBatch& r
     auto resource = resource_spans.mutable_resource();
     AddAttributes(resource->mutable_attributes(), plan_node_->resource_attributes_normal_encoding(),
                   rb, row_idx);
-    auto library_spans = resource_spans.add_instrumentation_library_spans();
+    auto scope_spans = resource_spans.add_scope_spans();
     for (const auto& span_pb : plan_node_->spans()) {
-      auto span = library_spans->add_spans();
+      auto span = scope_spans->add_spans();
       if (span_pb.has_name_string()) {
         span->set_name(span_pb.name_string());
       } else {

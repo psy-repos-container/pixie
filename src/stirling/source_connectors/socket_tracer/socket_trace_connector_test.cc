@@ -29,7 +29,7 @@
 
 #include "src/common/testing/testing.h"
 #include "src/stirling/core/connector_context.h"
-#include "src/stirling/core/data_table.h"
+#include "src/stirling/core/data_tables.h"
 #include "src/stirling/source_connectors/socket_tracer/protocols/cql/test_utils.h"
 #include "src/stirling/source_connectors/socket_tracer/testing/event_generator.h"
 #include "src/stirling/source_connectors/socket_tracer/testing/socket_trace_connector_friend.h"
@@ -172,7 +172,7 @@ class SocketTraceConnectorTest : public ::testing::Test {
     FLAGS_stirling_conn_stats_sampling_ratio = 1;
   }
 
-  testing::DataTables data_tables_{SocketTraceConnector::kTables};
+  DataTables data_tables_{SocketTraceConnector::kTables};
 
   DataTable* http_table_ = data_tables_[kHTTPTableNum];
   DataTable* cql_table_ = data_tables_[kCQLTableNum];
@@ -736,7 +736,7 @@ TEST_F(SocketTraceConnectorTest, ConnectionCleanupNoProtocol) {
 TEST_F(SocketTraceConnectorTest, ConnectionCleanupCollecting) {
   // Create an event with family PX_AF_UNKNOWN so that tracker goes into collecting state.
   struct socket_control_event_t conn0 = event_gen_.InitConn();
-  conn0.open.addr.sa.sa_family = PX_AF_UNKNOWN;
+  conn0.open.raddr.sa.sa_family = PX_AF_UNKNOWN;
 
   std::unique_ptr<SocketDataEvent> conn0_req_event =
       event_gen_.InitSendEvent<kProtocolHTTP>(kReq0.substr(0, 10));
@@ -856,8 +856,8 @@ TEST_F(SocketTraceConnectorTest, ConnectionCleanupInactiveAlive) {
 
   // Events should have been flushed.
   ASSERT_OK_AND_ASSIGN(const ConnTracker* tracker, source_->GetConnTracker(real_pid, real_fd));
-  EXPECT_TRUE(tracker->recv_data().Empty<http::Message>());
-  EXPECT_TRUE(tracker->send_data().Empty<http::Message>());
+  EXPECT_TRUE((tracker->recv_data().Empty<http::stream_id_t, http::Message>()));
+  EXPECT_TRUE((tracker->send_data().Empty<http::stream_id_t, http::Message>()));
 }
 
 TEST_F(SocketTraceConnectorTest, TrackedUPIDTransfersData) {
